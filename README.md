@@ -7,7 +7,8 @@ REST API для складського обліку: створення това
 ## Технології
 
 - .NET 8, ASP.NET Core Web API
-- Entity Framework Core 8 + SQLite
+- Entity Framework Core 8 + PostgreSQL 16 (Npgsql)
+- Docker, Docker Compose, pgAdmin 4
 - Swagger (Swashbuckle) з XML-документацією
 - xUnit + Moq для модульних тестів
 
@@ -27,18 +28,42 @@ src/WarehouseApi/
 tests/WarehouseApi.Tests/   модульні тести
 ```
 
-## Запуск
+## Запуск у Docker
 
-Потрібен [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Потрібен [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Docker Compose v2).
+
+```bash
+cp .env.example .env      # задайте власні паролі в .env
+docker compose up -d --build
+```
+
+| Сервіс | Контейнер | Адреса |
+|---|---|---|
+| Web API | `warehouse-api` | http://localhost:8080, Swagger UI — http://localhost:8080/swagger |
+| PostgreSQL | `warehouse-db` | лише всередині мережі `warehouse-net` (хост `db`, порт 5432) |
+| pgAdmin | `warehouse-pgadmin` | http://localhost:5050 (логін/пароль — `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` з `.env`) |
+
+У pgAdmin сервер **Warehouse DB** уже зареєстровано (`pgadmin/servers.json`); під час першого підключення введіть `POSTGRES_PASSWORD` з `.env`.
+
+Дані PostgreSQL зберігаються в томі `pgdata` і переживають `docker compose down` / `up`. Повністю видалити дані: `docker compose down -v`.
+
+Міграції EF Core застосовуються автоматично під час старту API.
+
+## CI/CD
+
+Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (GitHub Actions) запускається на кожен pull request і push у `main`:
+
+1. **Build & Test** — `dotnet build` і `dotnet test`, результати тестів зберігаються як артефакт.
+2. **Docker Compose smoke test** — збирає образ, піднімає PostgreSQL та API і перевіряє основні ендпоінти та Swagger.
+3. **Publish image to GHCR** (лише `main`) — публікує образ `ghcr.io/<owner>/warehouse-api` з тегами `latest` і SHA коміту.
+
+## Локальний запуск без Docker
+
+Потрібні [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) і PostgreSQL. Рядок підключення — `ConnectionStrings:DefaultConnection` у `src/WarehouseApi/appsettings.json`.
 
 ```bash
 dotnet run --project src/WarehouseApi --environment Development
 ```
-
-- API: http://localhost:5000
-- Swagger UI: http://localhost:5000/swagger (доступний лише в середовищі `Development`)
-
-База даних SQLite (`warehouse.db`) створюється автоматично під час першого запуску, міграції застосовуються самі. Рядок підключення задається в `src/WarehouseApi/appsettings.json` (`ConnectionStrings:DefaultConnection`).
 
 У базу одразу додаються два склади: **1 — «Основний склад»** і **2 — «Резервний склад»**.
 

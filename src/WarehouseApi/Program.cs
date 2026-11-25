@@ -6,9 +6,10 @@ using WarehouseApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// TS-29: підключення до бази даних та Entity Framework Core
+// TS-29: підключення до бази даних та Entity Framework Core (PostgreSQL).
+// У Docker рядок підключення передається змінною середовища ConnectionStrings__DefaultConnection.
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
 builder.Services.AddScoped<IInventoryRepository, InventoryRepository>();
