@@ -1,0 +1,72 @@
+# Багатоконтейнерний застосунок: Web API + PostgreSQL + pgAdmin.
+# Усі параметри підключення та паролі беруться з файлу .env (шаблон — .env.example).
+
+services:
+  # PostgreSQL — база даних застосунку
+  db:
+    image: postgres:16-alpine
+    container_name: warehouse-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Іменований том: дані зберігаються після перезапуску й видалення контейнера
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - warehouse-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ASP.NET Core Web API з ЛР №2
+  api:
+    build:
+      context: ./src/WarehouseApi
+    image: warehouse-api:latest
+    container_name: warehouse-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
+      # Хост "db" — ім'я сервісу, яке Docker DNS резолвить у мережі warehouse-net
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    ports:
+      - "${API_PORT}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - warehouse-net
+
+  # pgAdmin — графічний інструмент адміністрування БД
+  pgadmin:
+    image: dpage/pgadmin4:8.12
+    container_name: warehouse-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      # Заздалегідь зареєстрований сервер "Warehouse DB" (host = db)
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "${PGADMIN_PORT}:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - warehouse-net
+
+networks:
+  warehouse-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  pgadmin-data:
